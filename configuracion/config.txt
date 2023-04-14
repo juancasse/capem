@@ -1,0 +1,9 @@
+Configuración para lockin
+Frecuencias
+$
+12,15,20,30
+$
+repeticiones
+#
+10
+#
