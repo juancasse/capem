@@ -56,7 +56,6 @@ class conexionsrv:
         self.port=port
         self.srv=""
         self.status="desconectado"
-        
 
     
     def conectar(self,host="192.168.99.10", port = 9999):
@@ -105,37 +104,57 @@ class equiposerie():
         self.parity=parity
         self.stopbits=stopbits
         self.timeout=timeout
+        self.estado={'conexion':'desconectado','puerto':'cerrado', 'init':'sin inicializar', 'lectura':'ok', 'escritura':'ok'}
     
-    def conectar(self, port, baudrate, bytesize, parity, stopbits, timeout):
-        if port==None: port=self.port
-        if baudrate==None: baudrate=self.baudrate
-        if bytesize==None: bytesize=self.bytesize
-        if parity==None: parity=self.parity
-        if stopbits==None: stopbits=self.stopbits
+    def conectar(self, **kwargs):
+        
+        if 'port' in kwargs: self.port=kwargs['port']
+        if 'baudrate'in kwargs: self.baudrate=kwargs['baudrate']
+        if 'bytesize'in kwargs: self.bytesize=kwargs['bytesize']
+        if 'parity'in kwargs: self.parity=kwargs['parity']
+        if 'stopbits'in kwargs: self.stopbits=kwargs['stopbits']
+        if 'timeout' in kwargs: self.timeout=kwargs['timeout']
 
         from serial import Serial
-        if self.con.port == None:
-            self.con=Serial(port=port,baudrate=baudrate,bytesize=bytesize,parity=parity,stopbits=stopbits, timeout=timeout)
-        if self.con.port !=None:
-            self.status="Conectado"
+        try:
+            if self.con.port == None:
+                self.con=Serial(port=self.port,baudrate=self.baudrate,bytesize=self.bytesize,
+                                parity=self.parity,stopbits=self.stopbits, timeout=self.timeout)
+            if self.con.port !=None:
+                self.estado['conexion']='conectado'
+        except Exception as ex:
+            self.estado['conexion']=f'Error: {str(ex)}'
+
     
     def abrir(self):
-        if self.con.isOpen()==False:
-            self.con.open()
-        if self.con.isOpen()==True:
-            self.status="abierto"
-        else:self.status="cerrado"
+        try:
+            if self.con.isOpen()==False:
+                self.con.open()
+            if self.con.isOpen()==True:
+                self.estado['puerto']="abierto"
+            else:
+                self.estado['puerto']="cerrado"
+        except Exception as ex:
+            self.estado['puerto']=f'Error: {str(ex)}'
     
     def cerrar(self):
-        if self.con.isOpen()==True:
-            self.con.close()
-            self.status="cerrado"
+        try:
+            if self.con.isOpen()==True:
+                self.con.close()
+                self.estado['puerto']="cerrado"
+        except Exception as ex:
+            self.estado['puerto']=f'Error: {str(ex)}'
     
     def escribir(self, datos:str):
-        #Antes de escribir vacío el buffer de salida
-        self.con.flushOutput()
-        if self.con.isOpen():
-            self.con.write(datos.encode("ascii"))
+        try:
+            #Antes de escribir vacío el buffer de salida
+            self.con.flushOutput()
+            if self.con.isOpen():
+                self.con.write(datos.encode("ascii"))
+                self.estado['escritura']='Error: falta abrir puerto'
+        except Exception as ex:
+            self.estado['escritura']=f'Error: {str(ex)}'
+
     
     def leer(self, tipo="RL", num=-1):
         """
@@ -143,12 +162,15 @@ class equiposerie():
         tipo: Indica el tipo de lectura.
             RL: Read line, lee una linea completa, hasta que encuentra '\\n'. 
                 Si se especifica num, se leeran como máximo ese numero de bytes
+                CUIDADO! Si no se establece timeout, se bloquea hasta que encuentra el '\\n'.
 
             RLS: Read lines, devuelve varias líneas en forma de lista
-                Si se especifica num, se leeran como máximo ese numero de líneas
+                Si se especifica num, se leeran como máximo ese numero de líneas.
+                
 
             R: Devuelve la cantidad de bytes especificados en num
-                Si se especifica num, se leeran ese numero de bytes.
+                Si se especifica num, se leeran ese numero de bytes. Si no, se lee uno.
+                Si no se establece timeout, se bloquea hasta que lee todos los bits especificados
         """
         #Antes de leer vacío el buffer de entrada
         self.con.flushInput()
@@ -156,14 +178,27 @@ class equiposerie():
         res= None
         match tipo:
             case "RL":
-                res=self.con.readline(num)
+                try:
+                    res=self.con.readline(num)
+                except:
+                    pass
+
             case "RLS":
-                res=self.con.readlines(num)
+                try:
+                    res=self.con.readlines(num)
+                except:
+                    pass
             case "R":
-                if num==-1: num=1
-                res=self.con.read(num)
+                try:
+                    if num==-1: num=1
+                    res=self.con.read(num)
+                except:
+                    pass
         return res
     
+
+# %%
+#from serial import Serial
 
 # %%
 class LCR(equiposerie):
@@ -175,8 +210,7 @@ class LCR(equiposerie):
         equiposerie.__init__(self)
         self.inicializado=False
     
-    
-    def cambiarfreq(self, freq):
+    def LCR_cambiarfreq(self, freq):
         """
         Función para cambiar la frecuencia del LCR.
         No tiene tiempo de estabilizacion.
@@ -192,7 +226,7 @@ class LCR(equiposerie):
             self.cerrar()
         else: self.escribir(cmd)
     
-    def modo(self, modo:str="A"):
+    def LCR_modo(self, modo:str="A"):
         """
         Funcion que define el modo de funcionamiento.
         Hay dos usos: Poner el equipo en manual o atumático, y setearle que variables medir
@@ -217,24 +251,29 @@ class LCR(equiposerie):
                 cmd=modo
 
                 self.escribir(f"MAIN:MODE:{cmd}<^END^M>")
+        else: self.mensaje='Error: El puerto está cerrado'
 
-    def inicializar(self, port, baudrate, bytesize, parity, stopbits, timeout):
+    def LCR_inicializar(self, port, baudrate, bytesize, parity, stopbits, timeout):
         """Ejecuta las funciones necesarias para inicializar:
             -Conectar
-            -Setear qué se mide
+            -Abrir puerto
+            -Enviar comando de iniciar comunicacion (COMU?)
+            -Ver que responde correctamente(COMU:ON)
+            -Enviar comando de finalizar inicializacion (COMU:OVER)
+            -Ver que responde correctamente (COMU:OVER) 
             -Setear modo automático
         """
         from time import sleep
         try:
             self.conectar(port, baudrate, bytesize, parity, stopbits, timeout)
-            sleep(2)
+            
             self.modo("LR")
             sleep(1)
             self.modo("A")
             sleep(1)
-            self.inicializado=True
+            self.inicializado=1
         except Exception as e:
-            self.inicializado=False
+            self.inicializado=4
             self.status=str(e)
 
 
@@ -245,6 +284,30 @@ class LCR(equiposerie):
         return resp
 
             
+
+
+# %%
+class archivo_csv(csv):
+    from os.path import isfile
+    """
+    Clase heredada de CSV.
+    """
+    def __init__(self,archivo):
+        self.archivo=archivo
+
+    def  __agregar__(self,file,line):
+        with open(file, mode='a', newline='',) as archivo_csv:
+            writer = self.writer(archivo_csv, delimiter=";")
+            writer.writerow(line)
+        archivo_csv.close()
+        
+    def escribir(self,fila:str, encabezado:str):
+        #from os.path import isfile
+        if isfile(self.archivo):
+            self.__agregar__(self.archivo, fila.split(","))
+        else:
+            self.__agregar__(self.archivo, encabezado.split(","))
+            self.__agregar__(self.archivo, fila.split(","))
 
 
 
