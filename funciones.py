@@ -282,32 +282,3 @@ class LCR(equiposerie):
         #resp=self.leer()   #Completar cuando tenga en claro como se mide
         resp=list(1,2,3)
         return resp
-
-            
-
-
-# %%
-class archivo_csv(csv):
-    from os.path import isfile
-    """
-    Clase heredada de CSV.
-    """
-    def __init__(self,archivo):
-        self.archivo=archivo
-
-    def  __agregar__(self,file,line):
-        with open(file, mode='a', newline='',) as archivo_csv:
-            writer = self.writer(archivo_csv, delimiter=";")
-            writer.writerow(line)
-        archivo_csv.close()
-        
-    def escribir(self,fila:str, encabezado:str):
-        #from os.path import isfile
-        if isfile(self.archivo):
-            self.__agregar__(self.archivo, fila.split(","))
-        else:
-            self.__agregar__(self.archivo, encabezado.split(","))
-            self.__agregar__(self.archivo, fila.split(","))
-
-
-
