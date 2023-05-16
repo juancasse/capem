@@ -1,7 +1,7 @@
 Configuración para lockin
 Frecuencias
 $
-12,15,20,30
+12,15,20,30,120,150,180,200,220
 $
 repeticiones
 #

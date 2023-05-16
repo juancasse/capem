@@ -32,9 +32,11 @@ class configurar:
                     rep=int(rep)
                     self.rep=rep
                     okr=True
+                if okf and okr:
+                    err='no'
         except Exception as e:
             err=e
-        return dict(frecuencias=self.freq, repeticiones=self.rep, okfrec=okf,okrep=okr,error=err)
+        return self.freq, self.rep,err
 
 
 # %%
@@ -96,7 +98,7 @@ class equiposerie():
     Clase que maneja conexion serial.
     Maneja la conexion con equipos serie, y la lectura de datos
     """
-    def __init__(self, port=None, baudrate=9600, bytesize=8, parity='N', stopbits=1, timeout=None):
+    def __init__(self, port=None, baudrate=9600, bytesize=8, parity='N', stopbits=1, timeout=3):
         self.status="desconectado"
         self.port=port
         self.baudrate=baudrate
@@ -117,13 +119,17 @@ class equiposerie():
 
         from serial import Serial
         try:
+            ret=0
             if self.con.port == None:
                 self.con=Serial(port=self.port,baudrate=self.baudrate,bytesize=self.bytesize,
                                 parity=self.parity,stopbits=self.stopbits, timeout=self.timeout)
             if self.con.port !=None:
                 self.estado['conexion']='conectado'
+                ret=1
         except Exception as ex:
             self.estado['conexion']=f'Error: {str(ex)}'
+            ret=2
+        return ret
 
     
     def abrir(self):
@@ -147,10 +153,13 @@ class equiposerie():
     
     def escribir(self, datos:str):
         try:
-            #Antes de escribir vacío el buffer de salida
+            #Antes de escribir vacío el buffer de salida y de entrada
             self.con.flushOutput()
+            self.con.flushInput()
             if self.con.isOpen():
                 self.con.write(datos.encode("ascii"))
+                self.estado['escritura']='ok'
+            else:
                 self.estado['escritura']='Error: falta abrir puerto'
         except Exception as ex:
             self.estado['escritura']=f'Error: {str(ex)}'
@@ -172,8 +181,7 @@ class equiposerie():
                 Si se especifica num, se leeran ese numero de bytes. Si no, se lee uno.
                 Si no se establece timeout, se bloquea hasta que lee todos los bits especificados
         """
-        #Antes de leer vacío el buffer de entrada
-        self.con.flushInput()
+        
         
         res= None
         match tipo:
@@ -194,11 +202,7 @@ class equiposerie():
                     res=self.con.read(num)
                 except:
                     pass
-        return res
-    
-
-# %%
-#from serial import Serial
+        return res   
 
 # %%
 class LCR(equiposerie):
@@ -215,11 +219,12 @@ class LCR(equiposerie):
         Función para cambiar la frecuencia del LCR.
         No tiene tiempo de estabilizacion.
         """
+        
         if self.con.port!=None:
             if self.status=="desconectado":
                 self.conectar()
         freal=freq/1000.0
-        cmd=f"MAIN:FREQ {freal}<^END^M"
+        cmd="MAIN:FREQ {:.6f}<^END^M".format(freal)
         if self.con.isOpen()==False:
             self.abrir()
             self.escribir(cmd)
@@ -253,28 +258,45 @@ class LCR(equiposerie):
                 self.escribir(f"MAIN:MODE:{cmd}<^END^M>")
         else: self.mensaje='Error: El puerto está cerrado'
 
-    def LCR_inicializar(self, port, baudrate, bytesize, parity, stopbits, timeout):
+    def LCR_inicializar(self, **kwargs):
         """Ejecuta las funciones necesarias para inicializar:
             -Conectar
-            -Abrir puerto
             -Enviar comando de iniciar comunicacion (COMU?)
             -Ver que responde correctamente(COMU:ON)
             -Enviar comando de finalizar inicializacion (COMU:OVER)
             -Ver que responde correctamente (COMU:OVER) 
             -Setear modo automático
         """
+        if 'port' in kwargs: self.port=kwargs['port']
+        if 'baudrate'in kwargs: self.baudrate=kwargs['baudrate']
+        if 'bytesize'in kwargs: self.bytesize=kwargs['bytesize']
+        if 'parity'in kwargs: self.parity=kwargs['parity']
+        if 'stopbits'in kwargs: self.stopbits=kwargs['stopbits']
+        if 'timeout' in kwargs: self.timeout=kwargs['timeout']
         from time import sleep
         try:
-            self.conectar(port, baudrate, bytesize, parity, stopbits, timeout)
-            
-            self.modo("LR")
+            sts=0
+            sts=self.conectar()
             sleep(1)
-            self.modo("A")
-            sleep(1)
+            if sts==1:
+                self.escribir('COMU?')
+                sleep(1)
+                resp=self.leer('RL')
+                if 'COMU:ON' in resp:
+                    self.escribir('COMU:OVER')
+                    sleep(1)
+                    resp=self.leer('RL')
+                    if 'COMU:OVER' in resp:
+                        self.estado['init']='inicializado'
+                    else: self.estado['init']=f'respuesta incorrecta: {resp}'
+
+                else: self.estado['init']=f'respuesta incorrecta: {resp}'
             self.inicializado=1
+            
         except Exception as e:
             self.inicializado=4
             self.status=str(e)
+            self.estado['init']=f'error: {str(e)}'
 
 
     def medir(self):
@@ -282,3 +304,8 @@ class LCR(equiposerie):
         #resp=self.leer()   #Completar cuando tenga en claro como se mide
         resp=list(1,2,3)
         return resp
+
+            
+
+
+
