@@ -34,6 +34,12 @@ class configurar:
                     okr=True
                 if okf and okr:
                     err='no'
+                elif not okf and not okr:
+                    err='Frecuencias y repeticiones no definidas'
+                elif not okf:
+                    err='Frecuencias no definidas'
+                else:
+                    err='Repeticiones no definidas'
         except Exception as e:
             err=e
         return self.freq, self.rep,err
@@ -79,11 +85,14 @@ class conexionsrv:
         Envío comando a servidor (en formato string),
         y devuelve la respuesta en formato string
         """
-        #import time
-        envio=datos.encode("ascii")
-        self.srv.sendall(envio)
-        #time.sleep(0.1)
-        data=self.srv.recv(1024).decode("ascii")
+        try:
+            self.srv.settimeout(10.0)
+            envio=datos.encode("ascii")
+            self.srv.sendall(envio)
+            data=self.srv.recv(1024).decode("ascii")
+        except Exception as e:
+            self.status=e
+            data='error'
         return data
     
     def cerrar(self):
@@ -120,17 +129,18 @@ class equiposerie():
         from serial import Serial
         try:
             ret=0
-            if self.con.port == None:
-                self.con=Serial(port=self.port,baudrate=self.baudrate,bytesize=self.bytesize,
-                                parity=self.parity,stopbits=self.stopbits, timeout=self.timeout)
+            self.con=Serial(port=self.port,baudrate=self.baudrate,bytesize=self.bytesize,
+                            parity=self.parity,stopbits=self.stopbits, timeout=self.timeout)
             if self.con.port !=None:
                 self.estado['conexion']='conectado'
                 ret=1
         except Exception as ex:
-            self.estado['conexion']=f'Error: {str(ex)}'
+            self.estado['conexion']=str(ex)
             ret=2
         return ret
 
+    def desconectar(self):
+        del self.con
     
     def abrir(self):
         try:
