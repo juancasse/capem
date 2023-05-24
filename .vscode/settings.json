@@ -1,0 +1,6 @@
+{
+    "files.autoSave": "off",
+    "editor.codeActionsOnSave": {},
+    "debug.confirmOnExit": "always",
+    "terminal.integrated.confirmOnExit": "always"
+}
