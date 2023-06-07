@@ -1,9 +1,18 @@
-Configuración para lockin
-Frecuencias
+Configuración para LCR
+Nombre de archivo:
+&
+Dataset_x.csv
+&
+Comentario:
+*
+Esto es un comentario
+y tiene varios renglones
+*
+Frecuencias:
 $
 12,15,20,30,120,150,180,200,220
 $
-repeticiones
+repeticiones:
 #
-10
+3
 #

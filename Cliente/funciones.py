@@ -13,6 +13,7 @@ class configurar:
         self.archivo=archivo
         okf=False
         okr=False
+        okn=False
         err=""
         try:
             with open(self.archivo) as config:
@@ -32,17 +33,32 @@ class configurar:
                     rep=int(rep)
                     self.rep=rep
                     okr=True
-                if okf and okr:
+                u1=texto.find("&")+1
+                u2=texto.find("&",u1)
+                if u1>0 and u2>0:
+                    nombre=texto[u1+1:u2-1]
+                    if not '.csv' in nombre:
+                        nombre=nombre.join('.csv')
+                    self.nombre=nombre
+                    okn=True
+                u1=texto.find("*")+1
+                u2=texto.find("*",u1)
+                if u1>0 and u2>0:
+                    comentario=texto[u1+1:u2-1]
+                    self.comentario=''.join(comentario)
+                if okf and okr and okn:
                     err='no'
                 elif not okf and not okr:
                     err='Frecuencias y repeticiones no definidas'
                 elif not okf:
                     err='Frecuencias no definidas'
+                elif not okn:
+                    err='Nombre de archivo sin definir'
                 else:
                     err='Repeticiones no definidas'
         except Exception as e:
             err=e
-        return self.freq, self.rep,err
+        return self.nombre, self.comentario, self.freq, self.rep,err
 
 
 # %%
@@ -91,8 +107,8 @@ class conexionsrv:
             self.srv.sendall(envio)
             data=self.srv.recv(1024).decode("ascii")
         except Exception as e:
-            self.status=e
-            data='error'
+            self.status=str(e)
+            data=str(e)
         return data
     
     def cerrar(self):
@@ -108,7 +124,7 @@ class equiposerie():
     Maneja la conexion con equipos serie, y la lectura de datos
     """
     def __init__(self, port=None, baudrate=38400, bytesize=8, parity='N', stopbits=1, timeout=3):
-        self.status="desconectado"
+        #self.status="desconectado"
         self.port=port
         self.baudrate=baudrate
         self.bytesize=bytesize
@@ -118,14 +134,24 @@ class equiposerie():
         self.estado={'conexion':'desconectado', 'init':'sin inicializar', 'lectura':'ok', 'escritura':'ok'}
     
     def conectar(self, **kwargs):
-        
+        """
+        Función que realiza la conexión del equipo.
+        Si no se declara configuración, toma las configuraciones declaradas al crear la clase
+        KWARGS:
+            -port       ('PORT6')
+            -baudrate   (38400)
+            -bytesize   (8)
+            -parity     ('N')
+            -stopbits   (1)
+            -timeout    (3)
+        """
         if 'port' in kwargs: self.port=kwargs['port']
         if 'baudrate'in kwargs: self.baudrate=kwargs['baudrate']
         if 'bytesize'in kwargs: self.bytesize=kwargs['bytesize']
         if 'parity'in kwargs: self.parity=kwargs['parity']
         if 'stopbits'in kwargs: self.stopbits=kwargs['stopbits']
         if 'timeout' in kwargs: self.timeout=kwargs['timeout']
-
+        
         from serial import Serial
         try:
             ret=0
@@ -136,36 +162,17 @@ class equiposerie():
                 ret=1
         except Exception as ex:
             self.estado['conexion']=str(ex)
-            ret=2
+            ret=str(ex)
         return ret
 
     def desconectar(self):
         del self.con
     
-    def abrir(self):
-        try:
-            if self.con.isOpen()==False:
-                self.con.open()
-            if self.con.isOpen()==True:
-                #self.estado['puerto']="abierto"
-                pass
-            else:
-                #self.estado['puerto']="cerrado"
-                pass
-        except Exception as ex:
-            #self.estado['puerto']=f'Error: {str(ex)}'
-            pass
-    
-    def cerrar(self):
-        try:
-            if self.con.isOpen()==True:
-                self.con.close()
-                #self.estado['puerto']="cerrado"
-        except Exception as ex:
-            #self.estado['puerto']=f'Error: {str(ex)}'
-            pass
-    
     def escribir(self, datos:str):
+        '''
+        Agrega a 'datos' un LF y CR, y envía la cadena al equipo serie.
+        No devuelve nada, pero guarda el estado en estado['escritura']
+        '''
         try:
             #Antes de escribir vacío el buffer de salida y de entrada
             self.con.flushOutput()
@@ -178,7 +185,6 @@ class equiposerie():
                 self.estado['escritura']='Error: falta abrir puerto'
         except Exception as ex:
             self.estado['escritura']=f'Error: {str(ex)}'
-
     
     def leer(self, tipo="RL", num=-1):
         """
@@ -202,7 +208,6 @@ class equiposerie():
                     res=self.con.readline(num).decode()
                 except Exception as e:
                     res=str(e)
-
             case "RLS":
                 try:
                     res=self.con.readlines(num).decode()
@@ -220,7 +225,8 @@ class equiposerie():
 class LCR(equiposerie):
     """
     Herencia de 'equiposerie' adaptado a las funciones de LCR
-
+    Cuando se crea el objeto LCR se cargan las configuraciones estandar,
+    por lo que se deben modificar al inicializar
     """
     def __init__(self):
         equiposerie.__init__(self)
@@ -235,7 +241,6 @@ class LCR(equiposerie):
             from time import sleep
             freal=freq/1000.0
             cmd="MAIN:FREQ {:.5f}".format(freal)
-            print(cmd)
             self.escribir(cmd)
             sleep(0.5)
             ret=self.leer('RL')
@@ -243,41 +248,22 @@ class LCR(equiposerie):
         except Exception as e:
             return str(e)
     
-    def LCR_modo(self, modo:str="A"):
-        """
-        Funcion que define el modo de funcionamiento.
-        Hay dos usos: Poner el equipo en manual o atumático, y setearle que variables medir
-
-        modo:   "A"-> Equipo en Automático
-                "M"-> Equipo en Manual
-
-        modo:   "RQ"-> mide Resistencia y Calidad 
-                "CD"-> mide Capacitancia y Disipasión
-                "CR"-> mide Capacitancia y Resistencia
-                "LQ"-> mide Inductancia y Calidad
-                "LR"-> mide Inductancia y Resistencia
-                "ZQ"-> mide impedancia y Angulo  
-        """
-        if self.status=="abierto":
-            if modo in ["M","A"]:
-                if modo=="M": cmd="MANU"
-                else: cmd="AUTO"
-                self.escribir(f"MAIN:TRIG:{cmd}")
-
-            elif modo in ["RQ","CD","CR","LQ","LR","ZQ"]:
-                cmd=modo
-                self.escribir(f"MAIN:MODE:{cmd}")
-        else: self.mensaje='Error: El puerto está cerrado'
-
     def LCR_inicializar(self,m='ON',**kwargs):
-        """Ejecuta las funciones necesarias para inicializar:
+        """Si el parámetro m es 'OFF', desconecta el equipo y elimina la conexion.
+        Si el parámetro m es 'ON, crea la conexión y ejecuta las funciones necesarias para inicializar:
             -Conectar
             -Enviar comando de iniciar comunicacion (COMU?)
             -Ver que responde correctamente(COMU:ON)
             -Enviar comando de finalizar inicializacion (COMU:OVER)
             -Ver que responde correctamente (COMU:OVER) 
-            -Setear modo automático"""
-        
+            KWARGS:
+                -port       ('PORT6')
+                -baudrate   (38400)
+                -bytesize   (8)
+                -parity     ('N')
+                -stopbits   (1)
+                -timeout    (3)
+            """
         if 'port' in kwargs: self.port=kwargs['port']
         if 'baudrate'in kwargs: self.baudrate=kwargs['baudrate']
         if 'bytesize'in kwargs: self.bytesize=kwargs['bytesize']
@@ -310,46 +296,124 @@ class LCR(equiposerie):
                             self.inicializado=1
                         else: self.estado['init']=f'respuesta incorrecta: {resp}'
                     else: self.estado['init']=f'respuesta incorrecta: {resp}'
+                else: self.estado['init']=sts
         except Exception as e:
             self.inicializado=4
-            self.status=str(e)
+            self.estado['conexion']=str(e)
             self.estado['init']=f'error: {str(e)}'
         return self.estado['init']
+    
+    def LCR_modo(self, modo:str="M"):
+        """
+        Funcion que define el modo de funcionamiento.
+        Hay dos usos: Poner el equipo en manual o atumático, y setearle que variables medir
+
+        modo:   "A"-> Equipo en Automático
+                "M"-> Equipo en Manual
+
+        modo:   "RQ"-> mide Resistencia y Calidad 
+                "CD"-> mide Capacitancia y Disipasión
+                "CR"-> mide Capacitancia y Resistencia
+                "LQ"-> mide Inductancia y Calidad
+                "LR"-> mide Inductancia y Resistencia
+                "ZQ"-> mide impedancia y Angulo  
+        """
+        from time import sleep
+        if self.estado['init']=='inicializado':
+            if modo in ["M","A"]:
+                if modo=="M": cmd="MANU"
+                else: cmd="AUTO"
+                self.escribir(f"MAIN:TRIG:{cmd}")
+                sleep(0.3)
+                res=self.leer('RL')
+                if f'MAIN:TRIG:{modo}' in res: return 'OK'
+                else: return f'error al setear el modo {modo}'
+
+            elif modo in ["RQ","CD","CR","LQ","LR","ZQ"]:
+                cmd=modo
+                self.escribir(f"MAIN:MODE:{cmd}")
+                sleep(0.3)
+                res=self.leer('RL')
+                if f'MAIN:MODE:{modo}' in res: return 'OK'
+                else: return f'error al setear el modo {modo}'
+            else: self.mensaje='parámetro no encontrado'
+        else: self.mensaje='Error: el equipo se encuentra desconectado'
+
 
     def LCR_Configurar(self):
         from time import sleep
+        
+        #Velocidad
+        self.escribir('MAIN:SPEE:SLOW')
+        sleep(0.3)
+        res=self.leer()
+        if not ('MAIN:SPEE:SLOW' in res):
+            return "Error en cambiar velocidad"
+        
+        #display
+        self.escribir('MAIN:DISP:VALU')
+        sleep(0.3)
+        res=self.leer('RL')
+        if not 'MAIN:DISP:VALU' in res:
+            return 'Error al configurar display'
+
+        #Modo de medicion
+        res=self.LCR_modo('LR')
+        if not 'OK' in res:
+            return 'Error al configurar modo de medición'
+        
+        #Circuito
+        self.escribir('MAIN:CIRC:SERI')
+        sleep(0.3)
+        res=self.leer('RL')
+        if not 'MAIN:CIRC:SERI' in res:
+            return 'Error al configurar circuito'
+
         #Frecuencia
         res=self.LCR_cambiarfreq(12)
         if not 'MAIN:FREQ' in res:
             return "Error en seteo de frecuencia"
         
-        #Velocidad
-        self.escribir('MAIN:SPEE:SLOW')
-        sleep(0.3)
-        lect=self.leer()
-        if not ('MAIN:SPEE:SLOW' in lect):
-            return "Error en cambiar velocidad"
-        
         #Tensión
-        self.escribir('MAIN:VOLT 1.250')
-        sleep(0.3)
-        lect=self.leer()
-        if not ('MAIN:VOLT 1.250' in lect):
-            return "Error en ajustar tensión"
-
-        #trigger
-
-        #display
-        self.escribir('MAIN:DISP:VALU')
-        #circuit
-
-        #modo (man/auto)
-
-        #modo LR
-
+        #self.escribir('MAIN:VOLT 1.250')
+        #sleep(0.3)
+        #res=self.leer()
+        #if not ('MAIN:VOLT 1.250' in res):
+        #    return "Error en ajustar tensión"
+        
+        #Modo de disparo
+        res=self.LCR_modo('M')
+        if not 'OK' in res:
+            return 'Error al configurar modo de disparo'
+        
         #CV
-
-        #BIAS
+        self.escribir('MAIN:C.V.:OFF.')
+        sleep(0.3)
+        res=self.leer()
+        if not ('MAIN:C.V.:OFF.' in res):
+            return "Error en ajustar tensión constante (off)"
+      
+        #BIAS interno
+        self.escribir('MAIN:INTB:OFF.')
+        sleep(0.3)
+        res=self.leer()
+        if not ('MAIN:INTB:OFF.' in res):
+            return "Error en ajustar int BIAS (off)"
+        
+        #BIAS externo
+        self.escribir('MAIN:EXTB:OFF.')
+        sleep(0.3)
+        res=self.leer()
+        if not ('MAIN:EXTB:OFF.' in res):
+            return "Error en ajustar ext BIAS (off)"
+        
+        #PROMEDIO de muestras
+        self.escribir('STEP:AVER 1.00')
+        sleep(0.3)
+        res=self.leer()
+        if not ('STEP:AVER 1' in res):
+            return "Error en setear el numero de muestras"
+        
         return 'configuracion exitosa'
     def LCR_medir(self):
         """Mide los parámetros precargados del LCR"""
@@ -369,25 +433,5 @@ class LCR(equiposerie):
         else :
             prim,uprim,sec,usec='error','error','error','error'
         return prim,uprim,sec,usec
-
-# %%
-lcr=LCR()
-lcr.LCR_inicializar(port='COM6')
-
-# %%
-lcr.LCR_cambiarfreq(50)
-
-# %%
-test=lcr.escribir('MAIN:DISP:VALU')
-test
-
-# %%
-print(test)
-
-# %%
-lcr.leer('RL')
-
-# %%
-lcr.LCR_inicializar('OFF')
 
 
