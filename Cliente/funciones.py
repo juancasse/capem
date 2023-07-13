@@ -5,7 +5,7 @@ class configurar:
         self.rep=rep
         
     
-    def cargarconfig(self,archivo="configuracion/config.txt"):
+    def cargarconfig(self,archivo="configuracion/configuracion.txt"):
         """ 
         Función que trae configuración de un archivo que se da como argumento.
         Si no se argumenta, toma por defecto configuracion/config.txt

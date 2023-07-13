@@ -5,8 +5,8 @@ Dataset_x.csv
 &
 Comentario:
 *
-Esto es un comentario
-y tiene varios renglones
+Aqui van los comentarios pertinentes al ensayo
+Puede ser escrito en varios renglones
 *
 Frecuencias:
 $
@@ -14,5 +14,5 @@ $
 $
 repeticiones:
 #
-3
+10
 #

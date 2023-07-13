@@ -80,7 +80,7 @@ def configurar():
     global estados, tfrec, ifrec, repeticion, frecuencias, repeticiones, tempcolor, archivo, comentario
     dic={True:"OK", False: "NO OK"}
     ac=fn.configurar()
-    archivo, comentario, frecuencias,repeticiones,cnferror=ac.cargarconfig(r"E:\Proyectos Python\capem\Cliente\configuracion\config.txt")
+    archivo, comentario, frecuencias,repeticiones,cnferror=ac.cargarconfig(r"E:\Proyectos Python\capem\Cliente\configuracion\configuracion.txt")
     if cnferror=='no':
         tempcolor=green
         estados['config']='Configurado'
@@ -145,8 +145,8 @@ def escribir_csv(archivo:str, datos:list, encabezado:list, com):
             writer.writerow(l3)
             writer.writerow('')
             writer.writerow(l4)
-            #for l in com:
-            #    writer.writerow(list(l))
+            for l in com:
+                writer.writerow(list(l))
             writer.writerow('')
             writer.writerow(encabezado)
             flag_insertarheader=False
@@ -334,8 +334,8 @@ filtroPos10=0           #Fitro para determinar el cambio de posicion no OK a OK
 estados=dict(srvcon="Desconectado",sercon="Desconectado",   #diccionario  para indicar los estados de las conexiones y funciones
              config="Sin configurar", medicion="Detenido")
 
-encabezado=['Repetición', 'Frecuencia','En posicion','Posicion', 'Error SC', 'Presion', 'Nivel agua', 
-            'T recipiente', 'T subenfriada', 'T Estimada', 'Inductancia','Unidad', 'Resistencia', 'unidad', 'Dia', 'Hora']
+encabezado=['Repeticion', 'Frecuencia_Hz','En posicion','Posicion_mm', 'Error SC', 'Presion_bar', 'Nivel agua_mmh2o', 
+            'T recipiente_C', 'T subenfriada_C', 'T Estimada_C', 'Inductancia','Unidad', 'Resistencia', 'Unidad', 'Dia', 'Hora']
 
 datos_guardar=[]
 cmd_manual=''
