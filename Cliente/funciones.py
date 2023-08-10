@@ -177,7 +177,7 @@ class equiposerie():
             #Antes de escribir vacío el buffer de salida y de entrada
             self.con.flushOutput()
             self.con.flushInput()
-            dts=f'{datos}\n\r'
+            dts=f'{datos}\r\n'
             if self.con.isOpen():
                 self.con.write(dts.encode())
                 self.estado['escritura']='ok'
@@ -415,6 +415,7 @@ class LCR(equiposerie):
             return "Error en setear el numero de muestras"
         
         return 'configuracion exitosa'
+    
     def LCR_medir(self):
         """Mide los parámetros precargados del LCR"""
         from time import sleep
@@ -433,5 +434,253 @@ class LCR(equiposerie):
         else :
             prim,uprim,sec,usec='error','error','error','error'
         return prim,uprim,sec,usec
+
+# %%
+class Lockin(equiposerie):
+    """
+    Herencia de 'equiposerie' adaptado a las funciones del Lockin
+    Cuando se crea el objeto Lockin se cargan las configuraciones estandar,
+    por lo que se deben modificar al inicializar
+    """
+    def __init__(self):
+        equiposerie.__init__(self)
+        #self.inicializado=False
+    
+    def LIA_inicializar(self,m='ON',**kwargs):
+        """Si el parámetro m es 'OFF', desconecta el equipo y elimina la conexion.
+        Si el parámetro m es 'ON, crea la conexión y ejecuta las funciones necesarias para inicializar:
+            -Conectar
+            -Enviar comando de iniciar comunicacion (COMU?)
+            -Ver que responde correctamente(COMU:ON)
+            -Enviar comando de finalizar inicializacion (COMU:OVER)
+            -Ver que responde correctamente (COMU:OVER) 
+            KWARGS:
+                -port       ('PORT6')
+                -baudrate   (38400)
+                -bytesize   (8)
+                -parity     ('N')
+                -stopbits   (1)
+                -timeout    (3)
+            """
+        if 'port' in kwargs: self.port=kwargs['port']
+        if 'baudrate'in kwargs: self.baudrate=kwargs['baudrate']
+        if 'bytesize'in kwargs: self.bytesize=kwargs['bytesize']
+        if 'parity'in kwargs: self.parity=kwargs['parity']
+        if 'stopbits'in kwargs: self.stopbits=kwargs['stopbits']
+        if 'timeout' in kwargs: self.timeout=kwargs['timeout']
+        #self.estado={'conexion':'desconectado','puerto':'cerrado', 'init':'sin inicializar', 'lectura':'ok', 'escritura':'ok'}
+
+        from time import sleep
+        try:
+            if m=='OFF':
+                self.inicializado=0
+                self.desconectar()
+                self.estado['conexion']='desconectado'
+                self.estado['init']='sin inicializar'
+            else:
+                sts=self.conectar()
+                sleep(0.3)
+                if sts==1:
+                    self.escribir('OF')
+                    sleep(0.3)
+                    resp=self.leer('RL')
+                    if 'OF' in resp:
+                        self.estado['init']='inicializado'
+                        self.inicializado=1
+                    else: self.estado['init']=f'respuesta incorrecta: {resp}'
+                else: self.estado['init']=sts
+        except Exception as e:
+            self.inicializado=4
+            self.estado['conexion']=str(e)
+            self.estado['init']=f'error: {str(e)}'
+        return self.estado['init']
+    
+    def LIA_cambiarfrecuencia(self, freq:float):
+        """
+        Función para cambiar la frecuencia del Lockin.
+        No tiene tiempo de estabilizacion.
+        La frecuencia se ingresa en Hertz, puede ser con décimaso centécimas
+        """
+        try: 
+            from time import sleep
+            freal=int(freq*1000)
+            cmd=f"OF{freal}"
+            self.escribir(cmd)
+            sleep(0.3)
+            ret=self.leer('RL')
+            if 'OF' in ret:
+                ret='OK'
+            else: ret= 'ERROR'
+            return ret
+        except Exception as e:
+            return str(e)
+        
+    def LIA_cambiartension(self, tension:float):
+        """
+        Función para cambiar la tension del Lockin.
+        No tiene tiempo de estabilizacion.
+        La tensión es un numero flotante, en voltios
+        """
+        try: 
+            from time import sleep
+            tensionmv=int(tension*1000)
+            if tensionmv >3000: tensionmv=3000
+            cmd=f"OA{tensionmv}"
+            print(cmd)
+            self.escribir(cmd)
+            sleep(0.3)
+            ret=self.leer('RL')
+            if 'OA' in ret:
+                ret='OK'
+            else: ret= 'ERROR'
+            return ret
+        except Exception as e:
+            return str(e)
+    
+    def LIA_configurar(self):
+        return 'OK'
+        
+
+    def convertir(self,x):
+        return float(x)
+
+    def LIA_medir(self):
+        """Mide los parámetros precargados del LockIn"""
+        from time import sleep
+        self.escribir('XY.')
+        sleep(0.3)
+        
+        resp1=self.leer('RL')
+        if 'XY.' in resp1:
+            resp2=self.leer('RL')
+            resp3=resp2.split(sep=',')
+            prim, sec=map(self.convertir,resp3)
+            uprim='mV'
+            usec='mV'
+        else:
+            prim,uprim,sec,usec='error','error','error','error'
+        return prim,uprim,sec,usec
+    
+    def LIA_leerfrecuencia(self):
+        """Mide la frecuencia del LockIn"""
+        from time import sleep
+        self.escribir('FRQ.')
+        sleep(0.3)
+        
+        resp1=self.leer('RL')
+        if 'FRQ.' in resp1:
+            resp2=self.leer('RL')
+            frec=self.convertir(resp2)
+        else:
+            frec='error'
+        return frec
+    
+    def LIA_Cambiarsensibilidad(self, consigna:str):
+        """
+        Cambia la sensibilidad del lockin
+        18, 19, 20 ..... 1, 2 o 5mV
+        21, 22, 23 ..... 10, 20 o 50mV
+        24, 25, 26 ..... 100, 200 o 500mV
+        27         ..... 1V
+        """
+        from time import sleep
+        if consigna == '+':
+            self.escribir('SEN')
+            sleep(0.3)
+            resp1=self.leer('RL')
+            if 'SEN' in resp1:
+                resp2=self.leer('RL')
+                sen=int(resp2)+1
+                self.escribir(f'SEN{sen}')
+                sleep(0.3)
+                resp1=self.leer('RL')
+                if f'SEN{sen}' in resp1:
+                    ret='OK'
+                else: ret='error'
+        elif consigna=='-':
+            self.escribir('SEN')
+            sleep(0.3)
+            resp1=self.leer('RL')
+            if 'SEN' in resp1:
+                resp2=self.leer('RL')
+                sen=int(resp2)-1
+                self.escribir(f'SEN{sen}')
+                sleep(0.3)
+                resp1=self.leer('RL')
+                if f'SEN{sen}' in resp1:
+                    ret='OK'
+                else: ret='error'
+        else:
+            ret='error'
+        return ret
+    
+    def LIA_Leersensibilidad(self):
+        from time import sleep
+        self.escribir('SEN')
+        sleep(0.3)
+        resp1=self.leer('RL')
+        if 'SEN' in resp1:
+            resp2=self.leer('RL')
+            sen=int(resp2)
+            match sen:
+                case 18: ret=1
+                case 19: ret=2
+                case 20: ret=5
+                case 21: ret=10
+                case 22: ret=20
+                case 23: ret=50
+                case 24: ret=100
+                case 25: ret=200
+                case 26: ret=500
+                case 27: ret=1000
+                case _: ret= 'error'
+        else:
+            ret='error'
+        return ret
+
+
+    def LIA_CambiarTau(self, tau:int):
+        """
+        Cambia la constante de tiempo del lockin
+        10 -> 50mS
+        11 -> 100mS
+        12 -> 200mS
+        13 -> 500mS
+        14 -> 1000mS
+        """
+        if tau in [10,11,12,13,14]:
+            #Solo incorporo estas constantes de tiempo ya que son las probables de usar
+            from time import sleep
+            self.escribir(f'TC{tau}')
+            sleep(0.3)
+            resp1=self.leer('RL')
+            if f'TC{tau}' in resp1:
+                ret='OK'
+            else: ret='error'
+        else:
+            ret='error'
+        return ret
+
+# %% [markdown]
+# def LIA_Cambiarsensibilidad(self, sen:int):
+#         """
+#         Cambia la sensibilidad del lockin
+#         18, 19, 20 ..... 1, 2 o 5mV
+#         21, 22, 23 ..... 10, 20 o 50mV
+#         24, 25, 26 ..... 100, 200 o 500mV
+#         27         ..... 1V
+#         """
+#         if sen in [18,19,20,21,22,23,24,25,26,27]:
+#             #Solo incorporo estas sensibilidades ya que son las probables de usar
+#             from time import sleep
+#             self.escribir(f'SEN{sen}')
+#             sleep(0.3)
+#             resp1=self.leer('RL')
+#             if f'SEN{sen}' in resp1:
+#                 ret='OK'
+#             else: ret='error'
+#         else:
+#             ret='error'
+#         return ret
 
 

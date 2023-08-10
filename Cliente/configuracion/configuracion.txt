@@ -1,7 +1,7 @@
 Configuración para LCR
 Nombre de archivo:
 &
-Dataset_x.csv
+Dataset_test.csv
 &
 Comentario:
 *
